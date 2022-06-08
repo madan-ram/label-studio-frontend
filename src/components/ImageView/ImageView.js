@@ -874,13 +874,14 @@ export default observer(
           )}
           {this.renderTools()}
           {item.images.length > 1 && (
-            <div className={styles.gallery}>
+            <div className={styles.gallery+" lsf-img-gallery"}>
               {item.images.map((src, i) => (
                 <img
+                  data-idx={i}
                   alt=""
                   key={src}
                   src={src}
-                  className={i === item.currentImage && styles.active}
+                  className={i === item.currentImage ? styles.active + " lsf-img-active" : ''}
                   height="60"
                   onClick={() => item.setCurrentImage(i)}
                 />
