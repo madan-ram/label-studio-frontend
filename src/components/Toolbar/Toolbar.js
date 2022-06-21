@@ -26,10 +26,14 @@ export const Toolbar = inject("store")(observer(({ store, tools, expanded }) => 
     return "right";
   }, [toolbar, windowSize]);
 
+  const toolNameLst = [];
   const toolGroups = tools.filter(t => !t.dynamic).reduce((res,tool) => {
     const group = res[tool.group] ?? [];
 
-    group.push(tool);
+    if(!toolNameLst.includes(tool.toolName)) {
+      toolNameLst.push(tool.toolName);
+      group.push(tool);
+    }
     res[tool.group] = group;
     return res;
   }, {});
