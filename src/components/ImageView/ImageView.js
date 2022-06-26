@@ -877,7 +877,7 @@ export default observer(
             <div className={styles.gallery+" lsf-img-gallery"}>
               {item.images.map((src, i) => (
                 <img
-                  id={"idx-"+i}
+                  id={"idx-"+this.props.store.annotationStore.root.id+'-'+i}
                   data-idx={i}
                   alt=""
                   key={src}
