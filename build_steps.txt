@@ -1,0 +1,18 @@
+# Updating code from main labelstudio repo
+	
+	# Checkout from madan-dev to master
+	# Add repo url if not added
+	git remote add labelstudio https://github.com/heartexlabs/label-studio-frontend.git
+	git pull
+	# Resolve merge conflicts
+	# Then checkout to madan-dev
+	# Merge code from master
+
+# Install required packages such as webpack, yarm and mini-css-extract-plugin 
+
+	npm i -g webpack webpack-cli
+	# add --legacy-peer-deps option in case of peer dependencies error
+	npm install --save-dev mini-css-extract-plugin 
+
+	# Build using below command
+	npm build build-bundle
