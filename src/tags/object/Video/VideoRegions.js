@@ -41,7 +41,8 @@ const VideoRegionsPure = ({
   const [isDrawing, setDrawingMode] = useState(false);
   const stageRef = useRef();
 
-  const selected = regions.filter((reg) => (reg.selected || reg.inSelection) && !reg.hidden);
+  const selected = regions.filter((reg) => (reg.selected || reg.inSelection) && !reg.hidden && !reg.locked && !reg.readonly);
+  const listenToEvents = !locked && item.annotation.editable;
 
   const workinAreaCoordinates = useMemo(() => {
     const resultWidth = videoDimensions.width * zoom;
@@ -154,11 +155,12 @@ const VideoRegionsPure = ({
     tr.getLayer().batchDraw();
   };
 
-  const eventHandlers = !locked ? {
+  const eventHandlers = listenToEvents ? {
     onMouseDown: handleMouseDown,
     onMouseMove: handleMouseMove,
     onMouseUp: handleMouseUp,
   } : {};
+
 
   return (
     <Stage
@@ -166,7 +168,7 @@ const VideoRegionsPure = ({
       width={width}
       height={height}
       style={{ position: "absolute", zIndex: 1 }}
-      listening={locked === false}
+      listening={listenToEvents}
       {...eventHandlers}
     >
       <Layer {...layerProps}>
@@ -179,6 +181,7 @@ const VideoRegionsPure = ({
             workingArea={workinAreaCoordinates}
             draggable={!isDrawing && !locked}
             selected={reg.selected || reg.inSelection}
+            listening={(!reg.locked && !reg.readonly)}
             onClick={(e) => {
               // if (!reg.annotation.editable || reg.parent.getSkipInteractions()) return;
               if (store.annotationStore.selected.relationMode) {

@@ -36,6 +36,7 @@ import { FF_DEV_2394, isFF } from "../../utils/feature-flags";
  * @meta_description Customize Label Studio with the Image tag to annotate images for computer vision machine learning and data science projects.
  * @param {string} name                       - Name of the element
  * @param {string} value                      - Data field containing a path or URL to the image
+ * @param {boolean} [smoothing]               - Enable smoothing, by default it uses user settings
  * @param {string=} [width=100%]              - Image width
  * @param {string=} [maxWidth=750px]          - Maximum image width
  * @param {boolean=} [zoom=false]             - Enable zooming an image with the mouse wheel
@@ -49,6 +50,9 @@ import { FF_DEV_2394, isFF } from "../../utils/feature-flags";
  * @param {boolean} [contrastControl=false]   - Show contrast control in toolbar
  * @param {boolean} [rotateControl=false]     - Show rotate control in toolbar
  * @param {boolean} [crosshair=false]         - Show crosshair cursor
+ * @param {string} [horizontalAlignment="left"] - Where to align image horizontally. Can be one of "left", "center" or "right"
+ * @param {string} [verticalAlignment="top"]    - Where to align image vertically. Can be one of "top", "center" or "bottom"
+ * @param {string} [defaultZoom="fit"]          - Specify the initial zoom of the image within the viewport while preserving it’s ratio. Can be one of "auto", "original" or "fit"
  */
 const TagAttrs = types.model({
   name: types.identifier,
@@ -58,6 +62,7 @@ const TagAttrs = types.model({
   height: types.maybeNull(types.string),
   maxwidth: types.optional(types.string, "100%"),
   maxheight: types.optional(types.string, "calc(100vh - 194px)"),
+  smoothing: types.maybeNull(types.boolean),
 
   // rulers: types.optional(types.boolean, true),
   grid: types.optional(types.boolean, false),
@@ -76,6 +81,13 @@ const TagAttrs = types.model({
   rotatecontrol: types.optional(types.boolean, false),
   crosshair: types.optional(types.boolean, false),
   selectioncontrol: types.optional(types.boolean, true),
+
+  // this property is just to turn lazyload off to e2e tests
+  lazyoff: types.optional(types.boolean, false),
+
+  horizontalalignment: types.optional(types.enumeration(["left", "center", "right"]), "left"),
+  verticalalignment: types.optional(types.enumeration(["top", "center", "bottom"]), "top"),
+  defaultzoom: types.optional(types.enumeration(["auto", "original", "fit"]), "fit"),
 });
 
 const IMAGE_CONSTANTS = {
@@ -485,6 +497,18 @@ const Model = types.model({
     }
     return imgStyle;
   },
+
+  get maxScale() {
+    return self.isSideways
+      ? Math.min(self.containerWidth / self.naturalHeight, self.containerHeight / self.naturalWidth)
+      : Math.min(self.containerWidth / self.naturalWidth, self.containerHeight / self.naturalHeight);
+  },
+
+  get coverScale() {
+    return self.isSideways
+      ? Math.max(self.containerWidth / self.naturalHeight, self.containerHeight / self.naturalWidth)
+      : Math.max(self.containerWidth / self.naturalWidth, self.containerHeight / self.naturalHeight);
+  },
 }))
 
   // actions for the tools
@@ -625,18 +649,15 @@ const Model = types.model({
      * Set zoom
      */
     setZoom(scale) {
-      self.currentZoom = scale;
+      self.currentZoom = clamp(scale, 1, Infinity);
 
       // cool comment about all this stuff
-      const maxScale = self.isSideways
-        ? Math.min(self.containerWidth / self.naturalHeight, self.containerHeight / self.naturalWidth)
-        : Math.min(self.containerWidth / self.naturalWidth, self.containerHeight / self.naturalHeight);
-      const coverScale = self.isSideways
-        ? Math.max(self.containerWidth / self.naturalHeight, self.containerHeight / self.naturalWidth)
-        : Math.max(self.containerWidth / self.naturalWidth, self.containerHeight / self.naturalHeight);
+      const maxScale = self.maxScale;
+      const coverScale = self.coverScale;
+      const regionType = self.annotation.regionStore.regions.some(r => r.type === "polygonregion");
 
       if (maxScale > 1) { // image < container
-        if (scale < maxScale) { // scale = 1 or before stage size is max
+        if (scale < maxScale || !regionType) { // scale = 1 or before stage size is max
           self.stageZoom = scale; // scale stage
           self.zoomScale = 1; // don't scale image
         } else {
@@ -644,9 +665,9 @@ const Model = types.model({
           self.zoomScale = scale / maxScale; // scale image for the rest scale
         }
       } else { // image > container
-        if (scale > maxScale) { // scale = 1 or any other zoom bigger then viewport
+        if (scale > maxScale || regionType) { // scale = 1 or any other zoom bigger then viewport
           self.stageZoom = maxScale; // stage squizzed
-          self.zoomScale = scale; // scale image usually
+          self.zoomScale = scale; // scale image for the rest scale : scale image usually
         } else { // negative zoom bigger than image negative scale
           self.stageZoom = scale; // squize stage more
           self.zoomScale = 1; // don't scale image
@@ -695,6 +716,38 @@ const Model = types.model({
       self.zoomingPositionY = clamp(y, min.y, 0);
     },
 
+    resetZoomPositionToCenter() {
+      const { containerWidth, containerHeight, stageComponentSize, zoomScale } = self;
+      const { width, height } = stageComponentSize;
+
+      self.setZoomPosition((containerWidth - width * zoomScale) / 2, (containerHeight - height * zoomScale) / 2);
+    },
+
+    sizeToFit() {
+      const { maxScale } = self;
+
+      self.defaultzoom = "fit";
+      self.setZoom(maxScale);
+      self.updateImageAfterZoom();
+      self.resetZoomPositionToCenter();
+    },
+
+    sizeToOriginal() {
+      const { maxScale } = self;
+
+      self.defaultzoom = "original";
+      self.setZoom(maxScale > 1 ? 1 : 1 / maxScale);
+      self.updateImageAfterZoom();
+      self.resetZoomPositionToCenter();
+    },
+
+    sizeToAuto() {
+      self.defaultzoom = "auto";
+      self.setZoom(1);
+      self.updateImageAfterZoom();
+      self.resetZoomPositionToCenter();
+    },
+
     handleZoom(val, mouseRelativePos = { x: self.canvasSize.width / 2, y: self.canvasSize.height / 2 }) {
       if (val) {
         let zoomScale = self.currentZoom;
@@ -722,9 +775,9 @@ const Model = types.model({
         };
 
         self.setZoom(zoomScale);
-        
+
         stageScale = self.zoomScale;
-        
+
         const zoomingPosition = {
           x: -(mouseAbsolutePos.x - mouseRelativePos.x / stageScale) * stageScale,
           y: -(mouseAbsolutePos.y - mouseRelativePos.y / stageScale) * stageScale,
@@ -830,12 +883,24 @@ const Model = types.model({
     },
 
     _updateRegionsSizes({ width, height, naturalWidth, naturalHeight, userResize }) {
+      const _historyLength = self.annotation?.history?.history?.length;
+
+      self.annotation.history.freeze();
+
       self.regions.forEach(shape => {
         shape.updateImageSize(width / naturalWidth, height / naturalHeight, width, height, userResize);
       });
       self.regs.forEach(shape => {
         shape.updateImageSize(width / naturalWidth, height / naturalHeight, width, height, userResize);
       });
+      self.drawingRegion?.updateImageSize(width / naturalWidth, height / naturalHeight, width, height, userResize);
+
+      setTimeout(self.annotation.history.unfreeze, 0);
+
+      //sometimes when user zoomed in, annotation was creating a new history. This fix that in case the user has nothing in the history yet
+      if (_historyLength <= 1){
+        setTimeout(self.annotation.reinitHistory, 0);
+      }
     },
 
     updateImageSize(ev) {
@@ -849,6 +914,12 @@ const Model = types.model({
       // mobx do some batch update here, so we have to reset it asynchronously
       // this happens only after initial load, so it's safe
       self.setReady(true);
+
+      if (self.defaultzoom === "fit") {
+        self.sizeToFit();
+      } else {
+        self.sizeToAuto();
+      }
       setTimeout(self.annotation.reinitHistory, 0);
     },
 

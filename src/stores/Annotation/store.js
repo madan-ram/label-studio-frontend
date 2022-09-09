@@ -1,6 +1,5 @@
 import { destroy, getEnv, getParent, getRoot, types } from "mobx-state-tree";
 
-import { Hotkey } from "../../core/Hotkey";
 import Registry from "../../core/Registry";
 import Tree from "../../core/Tree";
 import Types from "../../core/Types";
@@ -9,7 +8,7 @@ import { guidGenerator } from "../../core/Helpers";
 import { DataValidator, ValidationError, VALIDATORS } from "../../core/DataValidator";
 import { errorBuilder } from "../../core/DataValidator/ConfigValidator";
 import { ViewModel } from "../../tags/visual";
-import { FF_DEV_1621, isFF } from "../../utils/feature-flags";
+import { FF_DEV_1621, FF_DEV_3034, isFF } from "../../utils/feature-flags";
 import { Annotation } from "./Annotation";
 import { HistoryItem } from "./HistoryItem";
 
@@ -54,7 +53,7 @@ export default types
           c.editable = false;
         });
       } else {
-        selectAnnotation(self.annotations[0].id);
+        selectAnnotation(self.annotations[0].id, { fromViewAll: true });
       }
     }
 
@@ -94,7 +93,7 @@ export default types
       item.updateObjects();
     }
 
-    function selectItem(id, list) {
+    function selectItem(id, list, resetHistory = true) {
       unselectViewingAll();
 
       self._unselectAll();
@@ -105,8 +104,11 @@ export default types
       if (!c) return null;
       c.selected = true;
 
-      self.selectedHistory = null;
-      self.history = [];
+      if (resetHistory) {
+        self.selectedHistory = null;
+        self.history = [];
+      }
+
       self.selected = c;
 
       c.updateObjects();
@@ -119,16 +121,16 @@ export default types
      * Select annotation
      * @param {*} id
      */
-    function selectAnnotation(id) {
+    function selectAnnotation(id, options = {}) {
       if (!self.annotations.length) return null;
 
       const { selected } = self;
-      const c = selectItem(id, self.annotations);
+      const c = selectItem(id, self.annotations, !options.retainHistory);
 
       c.editable = true;
       c.setupHotKeys();
 
-      getEnv(self).events.invoke('selectAnnotation', c, selected);
+      getEnv(self).events.invoke('selectAnnotation', c, selected, options ?? {});
       if (c.pk) getParent(self).addAnnotationToTaskHistory(c.pk);
       return c;
     }
@@ -280,7 +282,17 @@ export default types
       const item = createItem(options);
 
       if (item.userGenerate) {
-        item.completed_by = getRoot(self).user?.id ?? undefined;
+        let actual_user;
+
+        if (isFF(FF_DEV_3034)) {
+          // drafts can be created by other user, but we don't have much info
+          // so parse "id", get email and find user by it
+          const email = item.createdBy?.replace(/,\s*\d+$/, '');
+          const user = email && self.store.users.find(user => user.email === email);
+
+          if (user) actual_user = user.id;
+        }
+        item.completed_by = actual_user ?? getRoot(self).user?.id ?? undefined;
       }
 
       self.annotations.unshift(item);

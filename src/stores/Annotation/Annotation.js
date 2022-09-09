@@ -15,6 +15,7 @@ import throttle from "lodash.throttle";
 import { UserExtended } from "../UserStore";
 import { FF_DEV_2100, FF_DEV_2100_A, isFF } from "../../utils/feature-flags";
 import Result from "../../regions/Result";
+import { CommentStore } from "../Comment/CommentStore";
 
 const hotkeys = Hotkey("Annotations", "Annotations");
 
@@ -71,6 +72,13 @@ export const Annotation = types
 
     regionStore: types.optional(RegionStore, {
       regions: [],
+    }),
+
+    readonly: types.optional(types.boolean, false),
+    isDrawing: types.optional(types.boolean, false),
+
+    commentStore: types.optional(CommentStore, {
+      comments: [],
     }),
   })
   .preProcessSnapshot(sn => {
@@ -200,6 +208,14 @@ export const Annotation = types
 
     setEdit(val) {
       self.editable = val;
+    },
+
+    setReadonly(val) {
+      self.readonly = val;
+    },
+
+    setIsDrawing(isDrawing) {
+      self.isDrawing = isDrawing;
     },
 
     setGroundTruth(value, ivokeEvent = true) {
@@ -694,6 +710,7 @@ export const Annotation = types
         to_name: object,
         type: control.resultType,
         value: resultValue,
+        readonly: self.readonly,
       };
 
       const areaRaw = {
@@ -899,6 +916,12 @@ export const Annotation = types
         self._initialAnnotationObj = objAnnotation;
 
         objAnnotation.forEach(obj => {
+          const { readonly } = obj;
+
+          if(readonly) {
+            self.setReadonly(true);
+          }
+          
           self.deserializeSingleResult(obj,
             (id) => areas.get(id),
             (snapshot) => areas.put(snapshot),

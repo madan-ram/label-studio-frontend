@@ -100,8 +100,12 @@ const RegionsMixin = types
         self.notifyDrawingFinished({ destroy: true });
       },
 
-      setLocked(locked){
-        self.locked = locked;
+      setLocked(locked) {
+        if (locked instanceof Function) {
+          self.locked = locked(self.locked);
+        } else {
+          self.locked = locked;
+        }
       },
 
       makeDynamic() {
@@ -259,7 +263,7 @@ const RegionsMixin = types
       onClickRegion(ev) {
         const annotation = self.annotation;
 
-        if (!annotation.editable || self.isDrawing) return;
+        if (!annotation.editable || self.isDrawing || annotation.isDrawing) return;
 
         if (annotation.relationMode) {
           annotation.addRelation(self);

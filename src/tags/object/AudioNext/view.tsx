@@ -2,7 +2,8 @@ import { observer } from "mobx-react";
 import { FC, useCallback, useState } from "react";
 import { ObjectTag } from "../../../components/Tags/Object";
 import { Timeline } from "../../../components/Timeline/Timeline";
-import { Block, Elem } from "../../../utils/bem";
+import { WS_ZOOM_X } from "../../../components/Timeline/Views/Wave/Wave";
+import { Block } from "../../../utils/bem";
 
 interface AudioNextProps {
   item: any;
@@ -13,7 +14,7 @@ const AudioNextView: FC<AudioNextProps> = ({ item }) => {
   const [position, setPosition] = useState(1);
   const [audioLength, setAudioLength] = useState(0);
 
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(WS_ZOOM_X.default);
   const [volume, setVolume] = useState(1);
   const [speed, setSpeed] = useState(1);
 
@@ -30,6 +31,11 @@ const AudioNextView: FC<AudioNextProps> = ({ item }) => {
   const handleSeek = useCallback((frame: number) => {
     setPosition(frame);
     item.handleSeek();
+  }, []);
+
+  const handleSpeed = useCallback((speed: number) => {
+    setSpeed(speed);
+    item.handleSpeed(speed);
   }, []);
 
   const formatPosition = useCallback(({ time, fps }): string => {
@@ -107,7 +113,7 @@ const AudioNextView: FC<AudioNextProps> = ({ item }) => {
         onPause={handlePause}
         onZoom={setZoom}
         onVolumeChange={setVolume}
-        onSpeedChange={setSpeed}
+        onSpeedChange={handleSpeed}
         formatPosition={formatPosition}
       />
     </ObjectTag>

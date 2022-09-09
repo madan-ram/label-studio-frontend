@@ -3,6 +3,20 @@ import { types } from "mobx-state-tree";
 import Utils from "../utils";
 import throttle from "lodash.throttle";
 import { MIN_SIZE } from "../tools/Base";
+import { Hotkey } from "../core/Hotkey";
+import { FF_DEV_2576, isFF } from "../utils/feature-flags";
+
+const hotkeys = Hotkey("Polygons");
+
+const initializeHotkeys = (self) =>{
+  hotkeys.addNamed("polygon:undo", () => self.getCurrentArea()?.undoPoints(self));
+  hotkeys.addNamed("polygon:redo", () => self.getCurrentArea()?.redoPoints());
+};
+
+const disposeHotkeys = () => {
+  hotkeys.removeNamed("polygon:undo");
+  hotkeys.removeNamed("polygon:redo");
+};
 
 const DrawingTool = types
   .model("DrawingTool", {
@@ -103,11 +117,12 @@ const DrawingTool = types
         self.currentArea = self.obj.createDrawingRegion(opts, resultValue, control, false);
         self.currentArea.setDrawing(true);
         self.applyActiveStates(self.currentArea);
+        self.annotation.setIsDrawing(true);
         return self.currentArea;
       },
       commitDrawingRegion() {
         const { currentArea, control, obj } = self;
-        
+
         if(!currentArea) return;
         const source = currentArea.toJSON();
         const value = Object.keys(currentArea.serialize().value).reduce((value, key) => {
@@ -154,9 +169,12 @@ const DrawingTool = types
       startDrawing(x, y) {
         self.annotation.history.freeze();
         self.mode = "drawing";
-        const currentArea = self.createDrawingRegion(self.createRegionOptions({ x, y }));
 
-        self.currentArea = currentArea;
+        if (isFF(FF_DEV_2576)) {
+          initializeHotkeys(self);
+        }
+
+        self.currentArea = self.createDrawingRegion(self.createRegionOptions({ x, y }));
       },
       finishDrawing() {
         if (!self.beforeCommitDrawing()) {
@@ -172,8 +190,13 @@ const DrawingTool = types
         self._resetState();
       },
       _resetState(){
+        self.annotation.setIsDrawing(false);
         self.annotation.history.unfreeze();
         self.mode = "viewing";
+
+        if (isFF(FF_DEV_2576)) {
+          disposeHotkeys();
+        }
       },
     };
   });
@@ -416,12 +439,15 @@ const ThreePointsDrawingTool = DrawingTool.named("ThreePointsDrawingTool")
     };
 
     return {
-      updateDraw: throttle(function(x, y) {
+      canStartDrawing() {
+        return !self.isIncorrectControl();
+      },
+      updateDraw: (x, y) => {
         if (currentMode === DEFAULT_MODE)
           self.getCurrentArea()?.draw(x, y, points);
         else if (currentMode === DRAG_MODE)
           self.draw(x, y);
-      }, 48), // 3 frames, optimized enough and not laggy yet
+      },
 
       nextPoint(x, y) {
         points.push({ x, y });
@@ -442,6 +468,7 @@ const ThreePointsDrawingTool = DrawingTool.named("ThreePointsDrawingTool")
 
         shape.setPosition(x1, y1, x2 - x1, y2 - y1, shape.rotation);
       },
+
       finishDrawing(x, y) {
         if (self.isDrawing) {
           points = [];
@@ -453,11 +480,13 @@ const ThreePointsDrawingTool = DrawingTool.named("ThreePointsDrawingTool")
           });
         } else return;
       },
+
       mousemoveEv(_, [x, y]) {
         if(self.isDrawing){
           if(lastEvent === MOUSE_DOWN_EVENT) {
             currentMode = DRAG_MODE;
           }
+
           if (currentMode === DRAG_MODE && startPoint) {
             self.startDrawing(startPoint.x, startPoint.y);
             self.updateDraw(x, y);
@@ -467,11 +496,13 @@ const ThreePointsDrawingTool = DrawingTool.named("ThreePointsDrawingTool")
         }
       },
       mousedownEv(ev, [x, y]) {
+        if (!self.canStartDrawing()) return;
         lastEvent = MOUSE_DOWN_EVENT;
         startPoint = { x, y };
         self.mode = "drawing";
       },
       mouseupEv(ev, [x, y]) {
+        if (!self.canStartDrawing()) return;
         if(self.isDrawing) {
           if (currentMode === DRAG_MODE) {
             self.draw(x, y);
@@ -481,6 +512,7 @@ const ThreePointsDrawingTool = DrawingTool.named("ThreePointsDrawingTool")
         }
       },
       clickEv(ev, [x, y]) {
+        if (!self.canStartDrawing()) return;
         if (currentMode === DEFAULT_MODE) {
           self._clickEv(ev, [x, y]);
         }

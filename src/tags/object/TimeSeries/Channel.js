@@ -282,6 +282,9 @@ class ChannelD3 extends React.Component {
         // all other space is taken by brushCreator
         group.selectAll(".overlay").style("pointer-events", "none");
 
+        if(r.readonly)
+          group.selectAll(".handle").remove();
+          
         if (r._brushRef === undefined || !r._brushRef.isConnected) {
           r._brushRef = group.select(".selection").node();
         }
@@ -540,7 +543,7 @@ class ChannelD3 extends React.Component {
 
     this.extent = d3.extent(times);
 
-    const scale = isDate ? d3.scaleTime() : d3.scaleLinear();
+    const scale = isDate ? d3.scaleUtc() : d3.scaleLinear();
     const x = scale
       // .clamp(true)
       .domain(this.extent)
